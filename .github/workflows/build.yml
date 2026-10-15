@@ -1,33 +1,57 @@
 name: Build APK
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Unzip project
         run: |
+          mkdir -p project
           unzip -q *.zip -d project
           rm -rf project/.git
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
+      - name: Locate Gradle wrapper
+        run: |
+          echo "Project files:"
+          find project -maxdepth 4 -name gradlew -type f
+          if [ -f project/gradlew ]; then
+            echo "GRADLE_DIR=project" >> "$GITHUB_ENV"
+          else
+            WRAPPER="$(find project -maxdepth 4 -name gradlew -type f | head -n 1)"
+            if [ -z "$WRAPPER" ]; then
+              echo "ERROR: gradlew not found after unzip"
+              exit 1
+            fi
+            echo "GRADLE_DIR=$(dirname "$WRAPPER")" >> "$GITHUB_ENV"
+          fi
+
       - name: Install SDK, NDK, CMake
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1" "ndk;27.0.12077973"
+
       - name: Build
-        working-directory: project
         run: |
+          cd "$GRADLE_DIR"
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
+
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: project/app/build/outputs/apk/debug/*.apk
+          path: project/**/build/outputs/apk/debug/*.apk
