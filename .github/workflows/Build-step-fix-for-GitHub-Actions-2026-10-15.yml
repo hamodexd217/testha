@@ -1,0 +1,17 @@
+      - name: Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRAPPER_PATH="$(find project -type f -name gradlew -print -quit)"
+          if [[ -z "$WRAPPER_PATH" ]]; then
+            echo "ERROR: gradlew was not found under ./project after unzip."
+            echo "Extracted files (first 100):"
+            find project -maxdepth 4 -type f | sort | head -100 || true
+            exit 1
+          fi
+          PROJECT_ROOT="$(dirname "$WRAPPER_PATH")"
+          echo "Android project root: $PROJECT_ROOT"
+          test -f "$PROJECT_ROOT/settings.gradle.kts" -o -f "$PROJECT_ROOT/settings.gradle"
+          chmod +x "$WRAPPER_PATH"
+          cd "$PROJECT_ROOT"
+          ./gradlew assembleDebug --no-daemon --stacktrace
