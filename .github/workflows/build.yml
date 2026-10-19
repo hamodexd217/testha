@@ -15,49 +15,34 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Locate and unzip project
+      - name: Clean old extraction, unzip project, and remove ZIP
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf project
           mkdir -p project
-
-          # Prefer the exact archive delivered for the performance investigation.
           ZIP_FILE="BigMoeOnEdge-plus-performance-patch.zip"
-
           if [ ! -f "$ZIP_FILE" ]; then
-            # Accept project ZIPs containing "patch"; exclude only log/export archives.
-            mapfile -t ZIPS < <(
-              find . -maxdepth 1 -type f -name '*.zip' \
-                ! -name 'logs_*.zip' \
-                ! -name '*artifact*' \
-                | sort
-            )
-
+            mapfile -t ZIPS < <(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)
             if [ "${#ZIPS[@]}" -ne 1 ]; then
-              echo "ERROR: Expected the project ZIP at repository root."
-              echo "ZIP files found (excluding logs/artifacts):"
+              echo "ERROR: Expected exactly one project ZIP at repository root."
               printf '  %s\n' "${ZIPS[@]}"
-              echo
-              echo "Upload BigMoeOnEdge-plus-performance-patch.zip to the repository root,"
-              echo "or update ZIP_FILE in this workflow to the exact uploaded filename."
               exit 1
             fi
-
             ZIP_FILE="${ZIPS[0]}"
           fi
-
           echo "Using project archive: $ZIP_FILE"
           unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d project
           find project -type d -name .git -prune -exec rm -rf {} +
-
           WRAPPER="$(find project -maxdepth 8 -type f -name gradlew -print -quit)"
           if [ -z "$WRAPPER" ]; then
             echo "ERROR: gradlew was not found in the extracted project."
             find project -maxdepth 5 -type f | head -150
             exit 1
           fi
-
+          rm -f -- "$ZIP_FILE"
+          echo "Extracted project successfully; deleted source archive: $ZIP_FILE"
           PROJECT_ROOT="$(dirname "$WRAPPER")"
           echo "GRADLE_DIR=$PROJECT_ROOT" >> "$GITHUB_ENV"
           echo "Found Gradle project: $PROJECT_ROOT"
@@ -75,25 +60,14 @@ jobs:
           set -euo pipefail
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses >/dev/null || true
-          "$SDKM" \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "cmake;3.22.1"
-
+          "$SDKM" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1"
           installed=false
           for attempt in 1 2 3; do
-            if "$SDKM" "ndk;27.0.12077973"; then
-              installed=true
-              break
-            fi
+            if "$SDKM" "ndk;27.0.12077973"; then installed=true; break; fi
             echo "NDK installation attempt $attempt failed."
             sleep 10
           done
-
-          if [ "$installed" != true ]; then
-            echo "ERROR: Android NDK installation failed."
-            exit 1
-          fi
+          if [ "$installed" != true ]; then echo "ERROR: Android NDK installation failed."; exit 1; fi
 
       - name: Build debug APK
         shell: bash
@@ -110,4 +84,3 @@ jobs:
           name: BigMoeOnEdge-plus-debug-apk
           path: project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          
