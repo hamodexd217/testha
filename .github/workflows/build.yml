@@ -1,4 +1,3 @@
-
 name: Build APK
 
 on:
@@ -22,18 +21,25 @@ jobs:
           set -euo pipefail
           mkdir -p project
 
-          ZIP_FILE="BigMoeOnEdge-plus-0.4.5-performance-parity-fix.zip"
+          # Prefer the exact archive delivered for the performance investigation.
+          ZIP_FILE="BigMoeOnEdge-plus-performance-patch.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
+            # Accept project ZIPs containing "patch"; exclude only log/export archives.
             mapfile -t ZIPS < <(
               find . -maxdepth 1 -type f -name '*.zip' \
-                ! -name '*patch*' | sort
+                ! -name 'logs_*.zip' \
+                ! -name '*artifact*' \
+                | sort
             )
 
             if [ "${#ZIPS[@]}" -ne 1 ]; then
-              echo "ERROR: Could not identify one project ZIP."
-              echo "ZIP files found:"
-              printf '%s\n' "${ZIPS[@]}"
+              echo "ERROR: Expected the project ZIP at repository root."
+              echo "ZIP files found (excluding logs/artifacts):"
+              printf '  %s\n' "${ZIPS[@]}"
+              echo
+              echo "Upload BigMoeOnEdge-plus-performance-patch.zip to the repository root,"
+              echo "or update ZIP_FILE in this workflow to the exact uploaded filename."
               exit 1
             fi
 
@@ -43,14 +49,12 @@ jobs:
           echo "Using project archive: $ZIP_FILE"
           unzip -t "$ZIP_FILE"
           unzip -q "$ZIP_FILE" -d project
-          rm -rf project/.git
+          find project -type d -name .git -prune -exec rm -rf {} +
 
-          WRAPPER="$(find project -maxdepth 6 -type f \
-            -name gradlew -print -quit)"
-
+          WRAPPER="$(find project -maxdepth 8 -type f -name gradlew -print -quit)"
           if [ -z "$WRAPPER" ]; then
-            echo "ERROR: gradlew was not found."
-            find project -maxdepth 4 -type f | head -100
+            echo "ERROR: gradlew was not found in the extracted project."
+            find project -maxdepth 5 -type f | head -150
             exit 1
           fi
 
@@ -63,16 +67,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
       - name: Install Android SDK and NDK
         shell: bash
         run: |
           set -euo pipefail
-
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-
           yes | "$SDKM" --licenses >/dev/null || true
-
           "$SDKM" \
             "platforms;android-35" \
             "build-tools;35.0.0" \
@@ -84,7 +86,6 @@ jobs:
               installed=true
               break
             fi
-
             echo "NDK installation attempt $attempt failed."
             sleep 10
           done
@@ -109,3 +110,4 @@ jobs:
           name: BigMoeOnEdge-plus-debug-apk
           path: project/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          
