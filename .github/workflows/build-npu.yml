@@ -1,0 +1,119 @@
+name: Build NPU APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '*.zip'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout private repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Extract project source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p project
+          ZIP_FILE="BigMoeOnEdge-plus-performance-patch.zip"
+          if [ ! -f "$ZIP_FILE" ]; then
+            mapfile -t ZIPS < <(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)
+            if [ "${#ZIPS[@]}" -ne 1 ]; then
+              echo "ERROR: Expected exactly one source ZIP at repository root."
+              printf '  %s\n' "${ZIPS[@]}"
+              exit 1
+            fi
+            ZIP_FILE="${ZIPS[0]}"
+          fi
+          unzip -t "$ZIP_FILE"
+          unzip -q "$ZIP_FILE" -d project
+          WRAPPER="$(find project -maxdepth 8 -type f -name gradlew -print -quit)"
+          test -n "$WRAPPER" || { echo "ERROR: gradlew not found in source ZIP"; exit 1; }
+          PROJECT_ROOT="$(dirname "$WRAPPER")"
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Source root: $PROJECT_ROOT"
+          test -f "$PROJECT_ROOT/scripts/build-hexagon-onedge-engine.sh" || {
+            echo "ERROR: source does not contain scripts/build-hexagon-onedge-engine.sh"; exit 1;
+          }
+          test -f "$PROJECT_ROOT/scripts/verify-npu-payload.sh" || {
+            echo "ERROR: source does not contain scripts/verify-npu-payload.sh"; exit 1;
+          }
+
+      - name: Build JNI engine and Hexagon DSP libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e OUT=/workspace/build-hexagon-onedge \
+            -v "$PWD/$PROJECT_ROOT:/workspace" \
+            ghcr.io/snapdragon-toolchain/arm64-android@sha256:91714433626f0d94a926538a1e46ec43756c5b8e3262b91b95df1e812940aed1 \
+            bash /workspace/scripts/build-hexagon-onedge-engine.sh
+
+      - name: Verify staged NPU libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$PROJECT_ROOT/scripts/verify-npu-payload.sh" \
+            "$PROJECT_ROOT/app/src/main/jniLibs/arm64-v8a"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: '**/*.gradle*'
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" "platforms;android-35" "build-tools;35.0.0" "cmake;3.22.1" "ndk;27.2.12479018"
+
+      - name: Build NPU-enabled APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug -PbmoePrebuiltNative=true
+
+      - name: Verify APK actually packages the NPU payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK" || { echo "ERROR: APK not produced: $APK"; exit 1; }
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          for f in libonedge-engine.so libc++_shared.so libggml-htp-v73.so libggml-htp-v75.so libggml-htp-v79.so libggml-htp-v81.so; do
+            unzip -p "$APK" "lib/arm64-v8a/$f" > "$TMP/$f" || {
+              echo "ERROR: APK is missing lib/arm64-v8a/$f"; exit 1;
+            }
+            test -s "$TMP/$f" || { echo "ERROR: empty payload $f"; exit 1; }
+          done
+          bash "$PROJECT_ROOT/scripts/verify-npu-payload.sh" "$TMP"
+          sha256sum "$APK"
+
+      - name: Upload NPU APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: onedge-npu-debug-apk
+          path: ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
