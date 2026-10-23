@@ -23,6 +23,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check signing secrets (fail fast)
+        shell: bash
+        env:
+          BMOE_KEYSTORE_BASE64: ${{ secrets.BMOE_KEYSTORE_BASE64 }}
+          BMOE_KEYSTORE_PASSWORD: ${{ secrets.BMOE_KEYSTORE_PASSWORD }}
+          BMOE_KEY_ALIAS: ${{ secrets.BMOE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          for v in BMOE_KEYSTORE_BASE64 BMOE_KEYSTORE_PASSWORD BMOE_KEY_ALIAS; do
+            if [ -z "${!v}" ]; then
+              echo "ERROR: GitHub secret $v is not set. Add the signing secrets before building (see docs/SIGNING.md)." >&2
+              exit 1
+            fi
+          done
+
       # GitHub-hosted Ubuntu runners have limited free disk. The Hexagon SDK
       # container plus native build tree and Android NDK can exhaust it.
       - name: Reclaim runner disk space
