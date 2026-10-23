@@ -1,0 +1,59 @@
+name: Generate signing key (run once)
+
+# One-time helper: creates the release signing key on GitHub so no PC tools are needed.
+# It produces a downloadable artifact with the 3 values to paste into repository secrets.
+# Run it ONCE, add the secrets, then keep the downloaded file as your backup.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Refuse to overwrite an existing key
+        shell: bash
+        env:
+          EXISTING: ${{ secrets.BMOE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$EXISTING" ]; then
+            echo "BMOE_KEYSTORE_BASE64 is already set. Generating another key would break updates. Stopping." >&2
+            exit 1
+          fi
+
+      - name: Generate keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS="$(openssl rand -hex 16)"
+          echo "::add-mask::$PASS"
+          mkdir -p out
+          keytool -genkeypair -keystore out/bmoe-release.jks -alias bmoe \
+            -keyalg RSA -keysize 4096 -validity 36500 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=BigMoeOnEdge+, O=BigMoeOnEdge, C=US"
+          FP="$(keytool -list -v -keystore out/bmoe-release.jks -storepass "$PASS" -alias bmoe | sed -n 's/^ *SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f')"
+          {
+            echo "Add these as repository secrets (Settings > Secrets and variables > Actions):"
+            echo
+            echo "BMOE_KEYSTORE_PASSWORD = $PASS"
+            echo "BMOE_KEY_ALIAS = bmoe"
+            echo "BMOE_EXPECTED_CERT_SHA256 (optional) = $FP"
+            echo
+            echo "BMOE_KEYSTORE_BASE64 = (the long single line in bmoe-release.jks.b64)"
+            echo
+            echo "KEEP bmoe-release.jks and this file as your backup. Losing them means users must uninstall to update."
+          } > out/SECRETS-README.txt
+          base64 -w0 out/bmoe-release.jks > out/bmoe-release.jks.b64
+
+      - name: Upload (private, expires in 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: signing-key-DOWNLOAD-AND-DELETE
+          path: out/
+          retention-days: 1
+          if-no-files-found: error
