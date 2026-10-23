@@ -35,7 +35,7 @@ jobs:
           keytool -genkeypair -keystore out/bmoe-release.jks -alias bmoe \
             -keyalg RSA -keysize 4096 -validity 36500 \
             -storepass "$PASS" -keypass "$PASS" \
-            -dname "CN=BigMoeOnEdge+, O=BigMoeOnEdge, C=US"
+            -dname "CN=BigMoeOnEdge, O=BigMoeOnEdge, C=US"
           FP="$(keytool -list -v -keystore out/bmoe-release.jks -storepass "$PASS" -alias bmoe | sed -n 's/^ *SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f')"
           {
             echo "Add these as repository secrets (Settings > Secrets and variables > Actions):"
@@ -57,3 +57,4 @@ jobs:
           path: out/
           retention-days: 1
           if-no-files-found: error
+          
