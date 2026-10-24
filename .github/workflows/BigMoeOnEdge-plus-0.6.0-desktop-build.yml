@@ -1,0 +1,103 @@
+name: Build Desktop Native Engine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'desktop/**'
+      - 'app/src/main/cpp/core/**'
+      - 'app/src/main/cpp/third_party/llama.cpp/**'
+      - '.github/workflows/build.yml'
+      - '*.zip'
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-native:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+          - name: Windows x64
+            os: windows-2022
+          - name: macOS ARM64
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare source from root ZIP if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f CMakeLists.txt ] || [ ! -d app/src/main/cpp/core ]; then
+            mapfile -t zips < <(find . -maxdepth 1 -type f -name '*.zip' ! -name '*artifact*' | sort)
+            if [ "${#zips[@]}" -ne 1 ]; then
+              echo "Expected exactly one source ZIP when project is not unpacked; found ${#zips[@]}" >&2
+              printf '%s\n' "${zips[@]}" >&2
+              exit 1
+            fi
+            mkdir -p _source
+            unzip -q "${zips[0]}" -d _source
+            root="$(find _source -maxdepth 10 -type f -path '*/app/src/main/cpp/core/CMakeLists.txt' -print -quit)"
+            test -n "$root"
+            root="${root%/app/src/main/cpp/core/CMakeLists.txt}"
+            echo "BMOE_SOURCE_ROOT=$root" >> "$GITHUB_ENV"
+          else
+            echo "BMOE_SOURCE_ROOT=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Configure native desktop engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$BMOE_SOURCE_ROOT" -B "$BMOE_SOURCE_ROOT/build-desktop" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBMOE_BUILD_DESKTOP_CLI=ON \
+            -DBMOE_BUILD_DESKTOP_SERVER=ON \
+            -DBMOE_BUILD_TESTS=OFF \
+            -DBMOE_DESKTOP_MULTIMODAL=OFF
+
+      - name: Build desktop engine
+        shell: bash
+        run: cmake --build "$BMOE_SOURCE_ROOT/build-desktop" --config Release --parallel 2
+
+      - name: Smoke-test executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            exe="$BMOE_SOURCE_ROOT/build-desktop/bin/Release/bmoe-desktop.exe"
+            server="$BMOE_SOURCE_ROOT/build-desktop/bin/Release/bmoe-desktop-server.exe"
+            if [ ! -f "$exe" ]; then exe="$BMOE_SOURCE_ROOT/build-desktop/bin/bmoe-desktop.exe"; fi
+            if [ ! -f "$server" ]; then server="$BMOE_SOURCE_ROOT/build-desktop/bin/bmoe-desktop-server.exe"; fi
+          else
+            exe="$BMOE_SOURCE_ROOT/build-desktop/bin/bmoe-desktop"
+            server="$BMOE_SOURCE_ROOT/build-desktop/bin/bmoe-desktop-server"
+          fi
+          test -s "$exe"
+          test -s "$server"
+          "$exe" --help
+          "$server" --help
+
+      - name: Upload desktop CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bmoe-desktop-${{ matrix.os }}
+          path: |
+            ${{ env.BMOE_SOURCE_ROOT }}/build-desktop/bin/bmoe-desktop*
+          if-no-files-found: error
+          retention-days: 14
