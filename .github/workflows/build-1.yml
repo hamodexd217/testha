@@ -1,8 +1,9 @@
 name: Build (Rust)
 
 # Put this file at: .github/workflows/build.yml
-# The repo root must contain Cargo.toml and crates/ (the unzipped Rust project),
-# NOT a zip file.
+# Works with either layout:
+#   - the Rust project unzipped in the repo (Cargo.toml at root or in one subfolder), or
+#   - a single source .zip at the repo root (it gets unzipped automatically).
 
 on:
   push:
@@ -19,19 +20,40 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # ---------- Desktop: format, test, release binary (for benchmarking) ----------
   desktop:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust (stable, edition 2024 needs >= 1.85)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Locate Rust project
+        run: |
+          set -euo pipefail
+          if [ -f Cargo.toml ]; then
+            ROOT="."
+          else
+            if [ ! -d project ]; then
+              mapfile -t ZIPS < <(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*' | sort)
+              if [ "${#ZIPS[@]}" -eq 1 ]; then
+                echo "Unzipping ${ZIPS[0]}"
+                mkdir -p project && unzip -q "${ZIPS[0]}" -d project
+              fi
+            fi
+            CT="$(find . -maxdepth 4 -name Cargo.toml -not -path './.git/*' -not -path '*/target/*' -print0 \
+                  | xargs -0 grep -l '^\[workspace\]' 2>/dev/null | head -n1 || true)"
+            [ -n "$CT" ] || { echo "ERROR: no workspace Cargo.toml found. Repo contents:"; ls -la; exit 1; }
+            ROOT="$(dirname "$CT")"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Rust project root: $ROOT"
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PROJECT_ROOT }}
 
       - name: System libraries for eframe
         run: |
@@ -42,53 +64,75 @@ jobs:
             libssl-dev pkg-config cmake clang
 
       - name: Format check
+        working-directory: ${{ env.PROJECT_ROOT }}
         run: cargo fmt --all -- --check
-        continue-on-error: true   # code is not fully formatted yet; remove once clean
+        continue-on-error: true
 
       - name: Clippy
+        working-directory: ${{ env.PROJECT_ROOT }}
         run: cargo clippy --workspace --all-targets -- -D warnings
-        continue-on-error: true   # remove once clean
+        continue-on-error: true
 
       - name: Tests
+        working-directory: ${{ env.PROJECT_ROOT }}
         run: cargo test --workspace
 
       - name: Release build
+        working-directory: ${{ env.PROJECT_ROOT }}
         run: cargo build --release -p bmoe-app
 
       - uses: actions/upload-artifact@v4
         with:
           name: bmoe-app-linux-x86_64
-          path: target/release/bmoe-app
+          path: ${{ env.PROJECT_ROOT }}/target/release/bmoe-app
           if-no-files-found: error
 
-  # ---------- Android APK (experimental, never verified on a device) ----------
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust with Android target
-        uses: dtolnay/rust-toolchain@stable
+      - name: Locate Rust project
+        run: |
+          set -euo pipefail
+          if [ -f Cargo.toml ]; then
+            ROOT="."
+          else
+            if [ ! -d project ]; then
+              mapfile -t ZIPS < <(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*' | sort)
+              if [ "${#ZIPS[@]}" -eq 1 ]; then
+                echo "Unzipping ${ZIPS[0]}"
+                mkdir -p project && unzip -q "${ZIPS[0]}" -d project
+              fi
+            fi
+            CT="$(find . -maxdepth 4 -name Cargo.toml -not -path './.git/*' -not -path '*/target/*' -print0 \
+                  | xargs -0 grep -l '^\[workspace\]' 2>/dev/null | head -n1 || true)"
+            [ -n "$CT" ] || { echo "ERROR: no workspace Cargo.toml found. Repo contents:"; ls -la; exit 1; }
+            ROOT="$(dirname "$CT")"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Rust project root: $ROOT"
+
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.PROJECT_ROOT }}
 
-      - name: Set up Android SDK/NDK paths (preinstalled on ubuntu-latest)
+      - name: Android SDK/NDK paths (preinstalled on ubuntu-latest)
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
-          echo "NDK: $ANDROID_NDK_LATEST_HOME"
 
       - name: Install cargo-apk
         run: cargo install cargo-apk --locked
 
       - name: Prepare release keystore
-        # Uses your secrets if present; otherwise a throwaway test key
-        # (fine for testing, NOT for publishing).
         env:
           KS_B64: ${{ secrets.BMOE_KEYSTORE_B64 }}
           KS_PASS: ${{ secrets.BMOE_KEYSTORE_PASSWORD }}
@@ -96,21 +140,20 @@ jobs:
           set -euo pipefail
           KS="$RUNNER_TEMP/release.keystore"
           if [ -n "${KS_B64:-}" ] && [ -n "${KS_PASS:-}" ]; then
-            echo "$KS_B64" | base64 -d > "$KS"
-            PASS="$KS_PASS"
-            echo "Using keystore from secrets"
+            echo "$KS_B64" | base64 -d > "$KS"; PASS="$KS_PASS"
           else
             PASS="android-test-pass"
             keytool -genkey -v -keystore "$KS" -alias bmoe -keyalg RSA -keysize 2048 \
               -validity 10000 -storepass "$PASS" -keypass "$PASS" \
               -dname "CN=BMoE Test,O=Test,C=US" >/dev/null 2>&1
-            echo "Using throwaway test keystore"
+            echo "Using throwaway test keystore (not for publishing)"
           fi
           echo "::add-mask::$PASS"
           echo "CARGO_APK_RELEASE_KEYSTORE=$KS" >> "$GITHUB_ENV"
           echo "CARGO_APK_RELEASE_KEYSTORE_PASSWORD=$PASS" >> "$GITHUB_ENV"
 
       - name: Build APK
+        working-directory: ${{ env.PROJECT_ROOT }}
         run: cargo apk build --release -p bmoe-app
 
       - name: Remove keystore
@@ -120,5 +163,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: BigMoeOnEdgeRust-apk
-          path: target/release/apk/*.apk
+          path: ${{ env.PROJECT_ROOT }}/target/release/apk/*.apk
           if-no-files-found: error
+          
