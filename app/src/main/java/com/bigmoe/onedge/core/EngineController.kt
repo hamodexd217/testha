@@ -443,7 +443,7 @@ class EngineController(
             val stopped = AtomicBoolean(false)
             val worker = launch(ioDispatcher) {
                 try {
-                    backend.generate(
+                    backend.generateWithSampling(
                         system = request.system,
                         historyFlat = history,
                         prompt = prompt,
@@ -451,6 +451,7 @@ class EngineController(
                         clearKv = needsReplay,
                         think = request.think,
                         images = request.images,
+                        sampling = request.sampling,
                         callback = object : NativeGenerationCallback {
                             private var generated = 0
                             override fun onToken(answerDelta: ByteArray, reasoningDelta: ByteArray): Boolean {

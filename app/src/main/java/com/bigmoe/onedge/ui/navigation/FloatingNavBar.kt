@@ -26,6 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
+import com.bigmoe.onedge.ui.theme.AppTheme
+import com.bigmoe.onedge.ui.theme.appSurfaceModifier
 
 enum class TopTab(val label: String, val icon: ImageVector) {
     MODELS("Models", Icons.Default.Memory),
@@ -46,11 +50,14 @@ fun FloatingNavBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val navShape = RoundedCornerShape(22.dp)
+        val styled = AppTheme.visualStyle != AppVisualStyle.SOLID
         Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 3.dp,
-            shadowElevation = 6.dp
+            modifier = Modifier.then(if (styled) appSurfaceModifier(navShape, MaterialTheme.colorScheme.surface) else Modifier),
+            shape = navShape,
+            color = if (styled) Color.Transparent else MaterialTheme.colorScheme.surface,
+            tonalElevation = if (styled) 0.dp else 3.dp,
+            shadowElevation = if (styled) 0.dp else 6.dp
         ) {
             Row(
                 modifier = Modifier.padding(6.dp),

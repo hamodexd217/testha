@@ -24,17 +24,23 @@ const val DEFAULT_SYSTEM_PROMPT = ""
 /** When web search is switched on: the model decides (tool call) or the app searches for every message. */
 enum class WebSearchMode { AUTO, ALWAYS }
 
+/** Presentation style for major app surfaces. Liquid glass uses translucent surfaces and borders, avoiding costly live blur. */
+enum class AppVisualStyle { SOLID, GRADIENT, LIQUID_GLASS }
+
 /** Cache budget sentinel values (same convention as the original app's CACHE_AUTO / 0 / N MiB). */
 const val CACHE_AUTO_MB = -1
 const val CACHE_OFF_MB = 0
 
 /**
  * User settings. Three groups:
- *  - ENGINE (everything in [toLoadConfig]): the engine fixes these when a model is opened
- *    (bmoe::SessionConfig). Changing them only takes effect after the model is reloaded. The defaults are the
- *    original BigMoeOnEdge Android app's defaults (docs/settings-parity.md).
- *  - PER-REQUEST (maxTokens, thinkingEnabled, systemPrompt, web search): applied on the next message.
- *  - APP (theme, last model): never reach the engine.
+ *  - LOAD-TIME settings: context, threads, batch shape, cache, I/O, routing and backend options. The engine
+ *    fixes these when a model is opened; changing them requires reloading that model.
+ *  - PER-REQUEST settings: sampling (temperature/top-p/top-k/seed), max tokens, thinking, system prompt and
+ *    search/tool behavior. These are applied to the next generation where supported and do not require reload.
+ *  - APP settings: theme, last model and UI preferences; these do not configure the inference session.
+ *
+ * [toLoadConfig] still carries default sampler values for initial session setup and compatibility, but live chat
+ * generations override them per request through SamplingOverride.
  */
 data class EngineSettings(
     // ---- engine (needs reload) ----
@@ -44,11 +50,6 @@ data class EngineSettings(
     val batchThreadCount: Int = 4,
     /** Widest graph evaluated at once. Lower values conserve RAM; capped to the context at load. */
     val batchWidth: Int = 512,
-    val temperature: Float = 0.7f,
-    val topP: Float = 0.9f,
-    val topK: Int = 40,
-    /** -1 asks llama.cpp to choose a fresh random seed for each generation. */
-    val seed: Int = -1,
     /** -1 = auto, 0 = off, otherwise a fixed budget in MiB. */
     val cacheMb: Int = 2000,
     val cacheCeilMb: Int = 3000,
@@ -94,13 +95,19 @@ data class EngineSettings(
     /** Preserve the app's existing ability to choose a cache below the engine's 1500 MiB floor. */
     val forceCache: Boolean = true,
     // ---- per-request ----
+    // Sampling is sent for each generation; changing these values does not require reopening the model.
+    val temperature: Float = 0.7f,
+    val topP: Float = 0.9f,
+    val topK: Int = 40,
+    /** -1 asks llama.cpp to choose a fresh random seed for each generation. */
+    val seed: Int = -1,
     /** <= 0 = as long as the context allows. */
     val maxTokens: Int = -1,
     val thinkingEnabled: Boolean = false,
     val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
     val isWebSearchEnabled: Boolean = false,
     val webSearchMode: WebSearchMode = WebSearchMode.ALWAYS,
-    /** Let the model produce interactive HTML mini-apps when explicitly useful; off keeps ordinary replies lean. */
+    /** Allow compact, structured native UI blocks when explicitly requested; off keeps ordinary replies lean. */
     val interactiveUiEnabled: Boolean = false,
     /** Permit image_search alongside web search. */
     val imageSearchEnabled: Boolean = true,
@@ -122,6 +129,7 @@ data class EngineSettings(
     val searxngUrl: String = "",
     // ---- app ----
     val themeId: String = "paper",
+    val visualStyle: AppVisualStyle = AppVisualStyle.SOLID,
     /** JSON array of user-made palettes, see ui/theme/PaletteStore. */
     val customPalettesJson: String = "[]",
     val lastModelPath: String = "",
@@ -207,8 +215,18 @@ const val DEFAULT_SERVER_QUEUE_SEC = 60
 
 /** True when a model loaded with [loaded] would behave differently after a reload with [settings]. */
 /** The streaming-or-ordinary mode is chosen automatically per model, so it never counts as a changed setting. */
-fun loadConfigDiffers(loaded: LoadConfig, settings: EngineSettings): Boolean =
-    loaded.copy(mmapBaseline = false) != settings.toLoadConfig().copy(mmapBaseline = false)
+fun loadConfigDiffers(loaded: LoadConfig, settings: EngineSettings): Boolean {
+    val desired = settings.toLoadConfig().copy(mmapBaseline = false)
+    // Sampling is supplied with every chat generation now. It must not trigger a model reload.
+    val normalizedLoaded = loaded.copy(
+        mmapBaseline = false,
+        temperature = desired.temperature,
+        topP = desired.topP,
+        topK = desired.topK,
+        seed = desired.seed
+    )
+    return normalizedLoaded != desired
+}
 
 class EngineSettingsDataStore(private val context: Context) {
 
@@ -276,6 +294,7 @@ class EngineSettingsDataStore(private val context: Context) {
         val BRAVE_API_KEY = stringPreferencesKey("brave_api_key")
         val SEARXNG_URL = stringPreferencesKey("searxng_url")
         val THEME_ID = stringPreferencesKey("theme_id")
+        val VISUAL_STYLE = stringPreferencesKey("visual_style")
         val CUSTOM_PALETTES = stringPreferencesKey("custom_palettes")
         val LAST_MODEL = stringPreferencesKey("last_model_path")
         val AUTO_LOAD = booleanPreferencesKey("auto_load_last_model")
@@ -354,6 +373,7 @@ class EngineSettingsDataStore(private val context: Context) {
             braveApiKey = p[Keys.BRAVE_API_KEY] ?: d.braveApiKey,
             searxngUrl = p[Keys.SEARXNG_URL] ?: d.searxngUrl,
             themeId = p[Keys.THEME_ID] ?: d.themeId,
+            visualStyle = runCatching { AppVisualStyle.valueOf(p[Keys.VISUAL_STYLE] ?: d.visualStyle.name) }.getOrDefault(d.visualStyle),
             customPalettesJson = p[Keys.CUSTOM_PALETTES] ?: d.customPalettesJson,
             lastModelPath = p[Keys.LAST_MODEL] ?: d.lastModelPath,
             autoLoadLastModel = p[Keys.AUTO_LOAD] ?: d.autoLoadLastModel,
@@ -465,6 +485,7 @@ class EngineSettingsDataStore(private val context: Context) {
 
     // ---- app ----
     suspend fun updateThemeId(v: String) = set(Keys.THEME_ID, v)
+    suspend fun updateVisualStyle(v: AppVisualStyle) = set(Keys.VISUAL_STYLE, v.name)
     suspend fun updateCustomPalettesJson(v: String) = set(Keys.CUSTOM_PALETTES, v)
     suspend fun updateLastModelPath(v: String) = set(Keys.LAST_MODEL, v)
     suspend fun updateAutoLoadLastModel(v: Boolean) = set(Keys.AUTO_LOAD, v)

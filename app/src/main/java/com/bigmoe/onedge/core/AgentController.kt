@@ -180,7 +180,13 @@ class AgentController(
                     // After a tool result the model usually just has to use it: reasoning again costs minutes at
                     // decode speed, so it only happens when the user asked for it.
                     think = settings.thinkingEnabled && (engineRound == 0 || settings.thinkAfterTools),
-                    images = if (engineRound == 0) request.images else emptyList()
+                    images = if (engineRound == 0) request.images else emptyList(),
+                    sampling = SamplingOverride(
+                        temperature = if (settings.spec != SpecSource.OFF) 0f else settings.temperature,
+                        topP = settings.topP,
+                        topK = settings.topK,
+                        seed = settings.seed
+                    )
                 )
             ).collect { ev ->
                 when (ev) {
@@ -409,11 +415,11 @@ ${request.prompt}""".trim()
                 "If they are empty, irrelevant or an error, say so and answer from your own knowledge."
 
         const val INTERACTIVE_UI_HINT =
-            "When the user explicitly asks for an interactive UI, dashboard, visual comparison, or mini-app, " +
-                "prefer one self-contained HTML document in a fenced ```html code block. Use lightweight inline CSS/JavaScript, " +
-                "make controls genuinely update the displayed state, and keep the design responsive for a tablet. " +
-                "Do not create interactive HTML for ordinary questions unless it materially helps. Never claim a UI is interactive " +
-                "unless the code implements the interactions; do not invent benchmark data."
+            "When the user explicitly asks for an in-chat interactive visual, emit ONE compact JSON object inside a fenced ```bmoe-ui code block; do not output HTML, CSS, or JavaScript for this purpose. " +
+                "Supported schema: {\"type\":\"dashboard\",\"title\":\"Title\",\"description\":\"Optional\",\"metrics\":[{\"label\":\"RAM\",\"value\":\"3.2 GB\",\"detail\":\"estimate\"}],\"cards\":[{\"title\":\"Option A\",\"subtitle\":\"Short label\",\"body\":\"Details\"}],\"bars\":[{\"label\":\"Option A\",\"value\":70,\"valueLabel\":\"Illustrative\"}],\"actions\":[{\"label\":\"Explain A\",\"prompt\":\"Explain option A\"}]}. " +
+                "Use only the fields that are useful, keep the JSON compact, and ensure bars are between 0 and 100. Cards are selectable; actions send the supplied prompt. " +
+                "Never invent real benchmark values: label illustrative data clearly or omit it. If a richer component is unsupported, answer normally instead. " +
+                "Use this format only when explicitly requested and when Native UI components are enabled; ordinary answers must remain ordinary text."
 
         /** The user's message as a search query: first 200 characters, one line. */
         fun searchQueryFrom(message: String): String {

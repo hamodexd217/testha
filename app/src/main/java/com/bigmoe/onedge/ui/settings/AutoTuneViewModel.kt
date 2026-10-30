@@ -24,7 +24,10 @@ import com.bigmoe.onedge.core.SpecSource
 import com.bigmoe.onedge.core.applyTo
 import com.bigmoe.onedge.data.local.AutoSaveStore
 import com.bigmoe.onedge.data.local.datastore.EngineSettingsDataStore
+import com.bigmoe.onedge.data.local.datastore.EngineSettings
+import com.bigmoe.onedge.data.local.datastore.loadConfigDiffers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -51,7 +54,9 @@ data class AutoUiState(
     /** True after a save was switched on while a model is loaded: it needs a reload to take effect. */
     val reloadNeeded: Boolean = false,
     /** Opt-in: allow NPU prefill in newly created saves (off by default: least proven path). */
-    val useNpu: Boolean = false
+    val useNpu: Boolean = false,
+    /** Live persisted settings shown by the Custom Settings editor. */
+    val engineSettings: EngineSettings = EngineSettings()
 )
 
 class AutoTuneViewModel(
@@ -75,6 +80,11 @@ class AutoTuneViewModel(
     private var measureJob: Job? = null
 
     init {
+        viewModelScope.launch {
+            dataStore.settingsFlow.collect { settings ->
+                _ui.update { it.copy(engineSettings = settings) }
+            }
+        }
         viewModelScope.launch {
             store.load()
             migrateOldSaves()
@@ -100,6 +110,32 @@ class AutoTuneViewModel(
     }
 
     fun setUseNpu(on: Boolean) = _ui.update { it.copy(useNpu = on) }
+
+    /** Manual controls used by the Custom Settings mode; persistence and reload-diff logic are shared. */
+    private fun updateCustomSetting(change: suspend () -> Unit) {
+        viewModelScope.launch {
+            change()
+            val saved = dataStore.settingsFlow.first()
+            val loaded = (engineController.state.value as? EngineState.Ready)?.info
+            _ui.update {
+                it.copy(
+                    engineSettings = saved,
+                    reloadNeeded = loaded != null && loadConfigDiffers(loaded.config, saved),
+                    message = null
+                )
+            }
+        }
+    }
+    fun updateCustomContext(v: Int) = updateCustomSetting { dataStore.updateContextLength(v) }
+    fun updateCustomThreads(v: Int) = updateCustomSetting { dataStore.updateThreadCount(v) }
+    fun updateCustomBatchThreads(v: Int) = updateCustomSetting { dataStore.updateBatchThreadCount(v) }
+    fun updateCustomBatchWidth(v: Int) = updateCustomSetting { dataStore.updateBatchWidth(v) }
+    fun updateCustomCache(v: Int) = updateCustomSetting { dataStore.updateCacheMb(v) }
+    fun updateCustomIoThreads(v: Int) = updateCustomSetting { dataStore.updateIoThreads(v) }
+    fun updateCustomTemperature(v: Float) = updateCustomSetting { dataStore.updateTemperature(v) }
+    fun updateCustomTopP(v: Float) = updateCustomSetting { dataStore.updateTopP(v) }
+    fun updateCustomTopK(v: Int) = updateCustomSetting { dataStore.updateTopK(v) }
+    fun updateCustomSeed(v: Int) = updateCustomSetting { dataStore.updateSeed(v) }
 
     /**
      * If the previous run died in the middle of a measurement (Android killed the app for memory, or a native

@@ -226,7 +226,9 @@ data class GenerationRequest(
     val maxTokens: Int,
     val think: Boolean,
     /** Images for THIS turn only; needs a loaded vision projector. */
-    val images: List<ImageData> = emptyList()
+    val images: List<ImageData> = emptyList(),
+    /** Sampling is cheap to change per request; null keeps the session's load-time sampler for internal jobs. */
+    val sampling: SamplingOverride? = null
 )
 
 

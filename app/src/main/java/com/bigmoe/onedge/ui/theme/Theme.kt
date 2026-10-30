@@ -12,6 +12,15 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.dp
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -26,6 +35,8 @@ data class AppColors(
     val accent: Color
 )
 
+val LocalAppVisualStyle = staticCompositionLocalOf { AppVisualStyle.SOLID }
+
 val LocalAppColors = staticCompositionLocalOf {
     val p = PalettePresets.byId(PalettePresets.DEFAULT_LIGHT_ID)!!
     appColorsFrom(p)
@@ -33,6 +44,11 @@ val LocalAppColors = staticCompositionLocalOf {
 
 /** Shortcut: `AppTheme.colors.userMessage`. */
 object AppTheme {
+    val visualStyle: AppVisualStyle
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAppVisualStyle.current
+
     val colors: AppColors
         @Composable
         @ReadOnlyComposable
@@ -110,6 +126,7 @@ fun colorSchemeFrom(p: PaletteSpec): ColorScheme {
 @Composable
 fun BigMoeTheme(
     palette: PaletteSpec,
+    visualStyle: AppVisualStyle = AppVisualStyle.SOLID,
     content: @Composable () -> Unit
 ) {
     // enableEdgeToEdge() picks system-bar icon colours from the SYSTEM dark mode; the palette is chosen
@@ -125,7 +142,10 @@ fun BigMoeTheme(
             }
         }
     }
-    CompositionLocalProvider(LocalAppColors provides appColorsFrom(palette)) {
+    CompositionLocalProvider(
+        LocalAppColors provides appColorsFrom(palette),
+        LocalAppVisualStyle provides visualStyle
+    ) {
         MaterialTheme(
             colorScheme = colorSchemeFrom(palette),
             typography = Typography,
@@ -139,9 +159,59 @@ fun BigMoeTheme(
 fun BigMoeTheme(
     themeId: String,
     customPalettesJson: String,
+    visualStyle: AppVisualStyle = AppVisualStyle.SOLID,
     content: @Composable () -> Unit
 ) {
     val systemDark = isSystemInDarkTheme()
     val palette = PaletteStore.resolve(themeId, PaletteStore.parse(customPalettesJson), systemDark)
-    BigMoeTheme(palette = palette, content = content)
+    BigMoeTheme(palette = palette, visualStyle = visualStyle, content = content)
+}
+
+/** Paints the app canvas behind screens. Solid keeps the original palette; the other styles expose a subtle backdrop. */
+@Composable
+fun appBackgroundModifier(): Modifier = when (AppTheme.visualStyle) {
+    AppVisualStyle.SOLID -> Modifier.background(MaterialTheme.colorScheme.background)
+    AppVisualStyle.GRADIENT -> Modifier.background(
+        Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.background,
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f),
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.68f),
+                MaterialTheme.colorScheme.background
+            )
+        )
+    )
+    AppVisualStyle.LIQUID_GLASS -> Modifier.background(
+        Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.background,
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.16f),
+                MaterialTheme.colorScheme.surface
+            )
+        )
+    )
+}
+
+/** Reusable treatment for touchable surfaces. Liquid glass uses translucent frost tint and a fine border, not a costly live blur. */
+@Composable
+fun appSurfaceModifier(shape: Shape = RoundedCornerShape(20.dp), base: Color = MaterialTheme.colorScheme.surface): Modifier = when (AppTheme.visualStyle) {
+    AppVisualStyle.SOLID -> Modifier.background(base, shape)
+    AppVisualStyle.GRADIENT -> Modifier.background(
+        Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f),
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.36f),
+                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.94f)
+            )
+        ), shape
+    )
+    AppVisualStyle.LIQUID_GLASS -> Modifier
+        .shadow(8.dp, shape)
+        .background(
+            Brush.linearGradient(
+                listOf(base.copy(alpha = 0.70f), MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f), base.copy(alpha = 0.76f))
+            ), shape
+        )
+        .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f), shape)
 }

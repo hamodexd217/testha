@@ -33,6 +33,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +47,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
+import com.bigmoe.onedge.ui.theme.AppTheme
+import com.bigmoe.onedge.ui.theme.appSurfaceModifier
 import com.bigmoe.onedge.core.AutoSave
 import com.bigmoe.onedge.core.AutoTier
 import com.bigmoe.onedge.core.AutoSaveCodec
@@ -94,6 +99,7 @@ fun AutoSettingsScreen(
     var measureIds by remember { mutableStateOf<List<String>?>(null) }
     var pendingExport by remember { mutableStateOf<AutoSave?>(null) }
     var selectedTier by remember { mutableStateOf(AutoTier.BALANCED) }
+    var customSettingsSelected by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         val target = pendingExport
@@ -124,6 +130,9 @@ fun AutoSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.surface else Color.Transparent
+                ),
                 title = { Text("AUTO SETTINGS", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -132,7 +141,8 @@ fun AutoSettingsScreen(
                 }
             )
         },
-        modifier = modifier
+        modifier = modifier,
+        containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.background else Color.Transparent
     ) { innerPadding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp)
@@ -221,20 +231,49 @@ fun AutoSettingsScreen(
                 Text("Optimization goal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     AutoTier.values().forEach { tier ->
-                        if (selectedTier == tier) {
+                        if (!customSettingsSelected && selectedTier == tier) {
                             Button(onClick = { selectedTier = tier }, enabled = !busy) { Text(tier.title) }
                         } else {
-                            OutlinedButton(onClick = { selectedTier = tier }, enabled = !busy) { Text(tier.title) }
+                            OutlinedButton(onClick = { selectedTier = tier; customSettingsSelected = false }, enabled = !busy) { Text(tier.title) }
                         }
                     }
+                    if (customSettingsSelected) {
+                        Button(onClick = { customSettingsSelected = true }, enabled = !busy) { Text("Custom settings") }
+                    } else {
+                        OutlinedButton(onClick = { customSettingsSelected = true }, enabled = !busy) { Text("Custom settings") }
+                    }
                 }
-                Hint(selectedTier.tagline)
-                Button(
-                    onClick = { viewModel.createSaves(selectedTier) },
-                    enabled = ui.device != null && facts != null && !busy,
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("Create ${selectedTier.title} Settings") }
-                Hint("Creates one profile for the selected goal. The optimizer chooses supported settings; measured performance is the final judge.")
+                if (customSettingsSelected) {
+                    val current = ui.engineSettings
+                    Panel(MaterialTheme.colorScheme.surfaceContainerLow, border = true) {
+                        Text("CUSTOM SETTINGS", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Hint("These controls save to the app's manual engine settings. Sampling changes apply on the next message; context, threads, batch width, cache and I/O changes need a model reload when they differ from the loaded session.")
+                        ChoiceSetting("Context length", listOf(2048 to "2,048 tokens", 4096 to "4,096 tokens", 8192 to "8,192 tokens", 16384 to "16,384 tokens", 32768 to "32,768 tokens"), current.contextLength, enabled = !busy, onSelect = viewModel::updateCustomContext)
+                        ChoiceSetting("CPU decode threads", listOf(1 to "1", 2 to "2", 3 to "3", 4 to "4", 6 to "6", 8 to "8", 12 to "12"), current.threadCount, enabled = !busy, onSelect = viewModel::updateCustomThreads)
+                        ChoiceSetting("Prompt batch threads", listOf(1 to "1", 2 to "2", 4 to "4", 6 to "6", 8 to "8", 12 to "12"), current.batchThreadCount, enabled = !busy, onSelect = viewModel::updateCustomBatchThreads)
+                        ChoiceSetting("Batch width", listOf(128 to "128", 256 to "256", 512 to "512", 1024 to "1,024", 2048 to "2,048", 4096 to "4,096"), current.batchWidth, enabled = !busy, onSelect = viewModel::updateCustomBatchWidth)
+                        ChoiceSetting("Expert cache budget", listOf(-1 to "Auto", 512 to "512 MB", 1024 to "1 GB", 1500 to "1.5 GB", 2000 to "2 GB", 3000 to "3 GB", 4000 to "4 GB"), current.cacheMb, enabled = !busy, onSelect = viewModel::updateCustomCache)
+                        ChoiceSetting("I/O threads", (1..8).map { it to it.toString() }, current.ioThreads, enabled = !busy, onSelect = viewModel::updateCustomIoThreads)
+                        ChoiceSetting("Temperature", listOf(0f to "0 (greedy)", 0.2f to "0.2", 0.5f to "0.5", 0.7f to "0.7", 1f to "1.0", 1.2f to "1.2", 1.5f to "1.5", 2f to "2.0"), current.temperature, enabled = !busy, onSelect = viewModel::updateCustomTemperature)
+                        ChoiceSetting("Top-P", listOf(0.5f to "0.50", 0.7f to "0.70", 0.8f to "0.80", 0.9f to "0.90", 0.95f to "0.95", 1f to "1.00"), current.topP, enabled = !busy, onSelect = viewModel::updateCustomTopP)
+                        ChoiceSetting("Top-K", listOf(0 to "Model default (0)", 20 to "20", 40 to "40", 60 to "60", 80 to "80", 100 to "100", 200 to "200"), current.topK, enabled = !busy, onSelect = viewModel::updateCustomTopK)
+                        ChoiceSetting("Seed", listOf(-1 to "Random each run (-1)", 0 to "0", 1 to "1", 42 to "42", 123 to "123", 1234 to "1234"), current.seed, enabled = !busy, onSelect = viewModel::updateCustomSeed)
+                        if (ui.reloadNeeded && !busy) {
+                            Text("The loaded model needs a reload for the changed engine settings.", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                            Button(onClick = viewModel::reloadModel, modifier = Modifier.fillMaxWidth()) { Text("Reload model now") }
+                        } else if (currentModelPath != null) {
+                            Hint("The loaded model already matches the reload-sensitive settings, or only per-request sampling values changed.")
+                        }
+                    }
+                } else {
+                    Hint(selectedTier.tagline)
+                    Button(
+                        onClick = { viewModel.createSaves(selectedTier) },
+                        enabled = ui.device != null && facts != null && !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Create ${selectedTier.title} Settings") }
+                    Hint("Creates one profile for the selected goal. The optimizer chooses supported settings; measured performance is the final judge.")
+                }
                 val forModel = facts?.let { f -> saves.filter { it.modelName == f.name } }.orEmpty()
                 OutlinedButton(
                     onClick = { measureIds = forModel.map { it.id } },
@@ -393,11 +432,13 @@ private fun Panel(
     border: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(16.dp)
+    val styled = AppTheme.visualStyle != AppVisualStyle.SOLID
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = color,
-        border = if (border) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
-        modifier = Modifier.fillMaxWidth()
+        shape = shape,
+        color = if (styled) Color.Transparent else color,
+        border = if (styled) null else if (border) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant) else null,
+        modifier = Modifier.fillMaxWidth().then(if (styled) appSurfaceModifier(shape, color) else Modifier)
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
     }

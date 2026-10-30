@@ -111,6 +111,11 @@ class EngineNativeBridge {
         think: Boolean,
         imageDims: IntArray,
         imageData: Array<ByteArray>,
+        overrideSampling: Boolean,
+        temperature: Float,
+        topP: Float,
+        topK: Int,
+        seed: Int,
         callback: NativeGenerationCallback
     ): Boolean
 

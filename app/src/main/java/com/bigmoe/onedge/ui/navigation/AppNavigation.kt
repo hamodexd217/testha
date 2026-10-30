@@ -10,12 +10,17 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -48,6 +54,7 @@ import com.bigmoe.onedge.ui.settings.AutoSettingsScreen
 import com.bigmoe.onedge.ui.settings.AutoTuneViewModel
 import com.bigmoe.onedge.ui.settings.SettingsScreen
 import com.bigmoe.onedge.ui.settings.SettingsViewModel
+import com.bigmoe.onedge.ui.theme.appBackgroundModifier
 
 sealed class Screen(val route: String) {
     data object Home : Screen("home")
@@ -112,7 +119,7 @@ fun AppNavigation(
         if (!initialSessionId.isNullOrBlank()) openChat(initialSessionId)
     }
 
-    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(modifier = modifier.fillMaxSize().then(appBackgroundModifier())) {
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
@@ -196,6 +203,25 @@ fun AppNavigation(
                                     onNewChat = { chatViewModel.newChat() },
                                     onOpenChat = { chatViewModel.loadSession(it) }
                                 )
+                            }
+                            // A touch-friendly grab handle at the pane boundary. Tapping it collapses
+                            // the history panel so the conversation can use the entire tablet width.
+                            Box(
+                                modifier = Modifier.width(22.dp).fillMaxHeight()
+                                    .clickable { chatHistoryPaneVisible = !chatHistoryPaneVisible },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    modifier = Modifier.width(22.dp).height(56.dp),
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    shadowElevation = 2.dp
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(if (chatHistoryPaneVisible) "‹" else "›", style = MaterialTheme.typography.titleLarge)
+                                    }
+                                }
                             }
                             ChatScreen(
                                 viewModel = chatViewModel,

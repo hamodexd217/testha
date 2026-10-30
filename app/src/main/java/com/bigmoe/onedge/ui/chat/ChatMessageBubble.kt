@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import com.bigmoe.onedge.parser.ArtifactModel
 import com.bigmoe.onedge.parser.ArtifactType
 import com.bigmoe.onedge.ui.theme.AppTheme
+import com.bigmoe.onedge.ui.theme.appSurfaceModifier
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -76,6 +79,8 @@ fun ChatMessageBubble(
     stats: String? = null,
     note: String? = null,
     onOpenCodeArtifact: (language: String, code: String) -> Unit = { _, _ -> },
+    nativeUiEnabled: Boolean = false,
+    onNativeUiAction: (String) -> Unit = {},
     /** Long-press menu: Edit (user messages only). Null hides the entry. */
     onEdit: (() -> Unit)? = null,
     /** Long-press menu and the Copy button under assistant messages. Copies the complete raw message. */
@@ -134,7 +139,7 @@ fun ChatMessageBubble(
             ) {
               Surface(
                 shape = bubbleShape,
-                color = bubbleColor,
+                color = if (AppTheme.visualStyle == AppVisualStyle.SOLID) bubbleColor else Color.Transparent,
                 modifier = Modifier
                     .then(
                         if (isUser) {
@@ -147,6 +152,7 @@ fun ChatMessageBubble(
                                 .wrapContentHeight(Alignment.Top)
                         }
                     )
+                    .then(if (AppTheme.visualStyle == AppVisualStyle.SOLID) Modifier else appSurfaceModifier(bubbleShape, bubbleColor))
                     .then(if (hasMenu) Modifier.combinedClickable(onClick = {}, onLongClick = { menuOpen = true }) else Modifier)
               ) {
                 Column(
@@ -158,7 +164,9 @@ fun ChatMessageBubble(
                         text = text,
                         textColor = textColor,
                         isStreaming = isStreaming,
-                        onOpenAsArtifact = onOpenCodeArtifact
+                        onOpenAsArtifact = onOpenCodeArtifact,
+                        nativeUiEnabled = nativeUiEnabled,
+                        onNativeUiAction = onNativeUiAction
                     )
                     // No separate block cursor: it appeared on its own line beneath short streamed replies.
                     // Live text updates already indicate progress without adding a stray rectangle.

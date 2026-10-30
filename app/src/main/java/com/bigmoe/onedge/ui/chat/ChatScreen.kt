@@ -43,6 +43,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +80,8 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import com.bigmoe.onedge.data.local.entity.MessageRole
 import com.bigmoe.onedge.workspace.FileKinds
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
+import com.bigmoe.onedge.ui.theme.AppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -202,6 +205,9 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.surface else Color.Transparent
+                ),
                 title = {
                     Column {
                         Text(uiState.currentSession?.title ?: "New chat", maxLines = 1)
@@ -249,7 +255,8 @@ fun ChatScreen(
                 }
             )
         },
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier.fillMaxSize(),
+        containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.surface else Color.Transparent
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -259,12 +266,6 @@ fun ChatScreen(
                 .imePadding()
         ) {
             EngineBanner(state = uiState.engineState, onOpenModels = onNavigateToModels)
-            LivePerformanceMonitor(
-                engineState = uiState.engineState,
-                sessionId = uiState.currentSession?.id,
-                generating = uiState.isGenerating,
-                readSnapshot = remember(viewModel) { { viewModel.readPerformance() } }
-            )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 if (uiState.messages.isEmpty() && !showLiveBubble) {
                     EmptyChatView(onSuggestionSelected = { prompt -> viewModel.sendMessage(prompt) })
@@ -301,6 +302,8 @@ fun ChatScreen(
                                     ),
                                     note = message.note,
                                     onOpenCodeArtifact = viewModel::saveCodeAsArtifact,
+                                    nativeUiEnabled = uiState.settings.interactiveUiEnabled,
+                                    onNativeUiAction = viewModel::sendMessage,
                                     // Long-press: user message -> Edit + Copy, assistant message -> Copy.
                                     onEdit = if (message.role == MessageRole.USER && !uiState.isGenerating) {
                                         { editingMessage = message }
@@ -322,35 +325,24 @@ fun ChatScreen(
                         if (showLiveBubble) {
                             item(key = "live_bubble") {
                                 if (uiState.liveText.isEmpty() && uiState.liveReasoning.isEmpty()) {
-                                    LiveStatusRow(
-                                        uiState.liveStatus ?: "Reading…",
-                                        formatStats(
-                                            null, null, uiState.generationTokens, null,
-                                            uiState.generationElapsedMs, uiState.contextUsed, uiState.contextTotal
-                                        )
-                                    )
+                                    // Minimal activity affordance: no extra live-status/telemetry row.
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    }
                                 } else {
                                     ChatMessageBubble(
                                         text = uiState.liveText,
                                         isUser = false,
-                                        isStreaming = uiState.liveText.isNotEmpty() || uiState.liveStatus == null,
+                                        isStreaming = true,
                                         reasoning = uiState.liveReasoning.ifEmpty { null },
                                         isReasoningStreaming = uiState.liveText.isEmpty(),
-                                        stats = formatStats(
-                                            null, null, uiState.generationTokens, null,
-                                            uiState.generationElapsedMs, uiState.contextUsed, uiState.contextTotal
-                                        ),
-                                        onOpenCodeArtifact = viewModel::saveCodeAsArtifact
+                                        onOpenCodeArtifact = viewModel::saveCodeAsArtifact,
+                                        nativeUiEnabled = uiState.settings.interactiveUiEnabled,
+                                        onNativeUiAction = viewModel::sendMessage
                                     )
-                                    uiState.liveStatus?.let {
-                                        LiveStatusRow(
-                                            it,
-                                            formatStats(
-                                                null, null, uiState.generationTokens, null,
-                                                uiState.generationElapsedMs, uiState.contextUsed, uiState.contextTotal
-                                            )
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -370,6 +362,10 @@ fun ChatScreen(
 
             uiState.notice?.let { NoticeBar(text = it, onDismiss = { viewModel.dismissNotice() }) }
 
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
             ChatInputBar(
                 textValue = uiState.inputDraft,
                 onTextChanged = viewModel::setInputDraft,
@@ -400,8 +396,9 @@ fun ChatScreen(
                 choiceOptions = uiState.choiceOptions,
                 onToggleChooseFromOptions = viewModel::toggleChooseFromOptions,
                 onChoiceOptionsChanged = viewModel::setChoiceOptions,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth().padding(vertical = 8.dp)
             )
+            }
         }
     }
     }
@@ -593,17 +590,3 @@ private fun NoticeBar(text: String, onDismiss: () -> Unit) {
     }
 }
 
-@Composable
-private fun LiveStatusRow(text: String, telemetry: String? = null) {
-    Row(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SlowBlinkDot()
-        Text(text = text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-        if (!telemetry.isNullOrBlank()) {
-            Text("• $telemetry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-        }
-    }
-}

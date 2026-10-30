@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -64,11 +66,14 @@ import com.bigmoe.onedge.core.EngineState
 import com.bigmoe.onedge.core.SpecSource
 import com.bigmoe.onedge.data.local.datastore.CACHE_AUTO_MB
 import com.bigmoe.onedge.data.local.datastore.EngineSettings
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
 import com.bigmoe.onedge.data.local.datastore.WebSearchMode
 import com.bigmoe.onedge.data.local.datastore.loadConfigDiffers
 import com.bigmoe.onedge.ui.theme.PalettePresets
 import com.bigmoe.onedge.ui.theme.PaletteSpec
 import com.bigmoe.onedge.ui.theme.PaletteStore
+import com.bigmoe.onedge.ui.theme.AppTheme
+import com.bigmoe.onedge.ui.theme.appSurfaceModifier
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -127,10 +132,14 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.surface else Color.Transparent
+                ),
                 title = { Text("SETTINGS", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold) }
             )
         },
-        modifier = modifier
+        modifier = modifier,
+        containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.background else Color.Transparent
     ) { innerPadding ->
         val settings = loaded
         if (settings == null) {
@@ -191,6 +200,9 @@ private fun SettingsContent(
     var editingPalette by remember { mutableStateOf<PaletteSpec?>(null) }
     var editingIsNew by remember { mutableStateOf(false) }
 
+    // Reveal the reload action automatically whenever a load-sensitive setting diverges from the live session.
+    LaunchedEffect(reloadNeeded) { if (reloadNeeded) modelExpanded = true }
+
     LaunchedEffect(systemPrompt) {
         if (systemPrompt != settings.systemPrompt) { delay(DEBOUNCE_MS); viewModel.updateSystemPrompt(systemPrompt) }
     }
@@ -226,6 +238,22 @@ private fun SettingsContent(
             // ------------------------------------------------------------ appearance
             val custom = PaletteStore.parse(settings.customPalettesJson)
             val selectedCustom = custom.firstOrNull { it.id == settings.themeId }
+            Text("Surface style", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("Choose how major surfaces look. Liquid glass uses a translucent frosted layer and subtle borders instead of expensive real-time blur.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(
+                    AppVisualStyle.SOLID to "Solid colors",
+                    AppVisualStyle.GRADIENT to "Gradient",
+                    AppVisualStyle.LIQUID_GLASS to "Liquid glass"
+                ).forEach { (style, label) ->
+                    if (settings.visualStyle == style) {
+                        Button(onClick = { viewModel.updateVisualStyle(style) }, modifier = Modifier.weight(1f)) { Text(label, textAlign = TextAlign.Center) }
+                    } else {
+                        OutlinedButton(onClick = { viewModel.updateVisualStyle(style) }, modifier = Modifier.weight(1f)) { Text(label, textAlign = TextAlign.Center) }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
             val recommendedIds = listOf("paper", "pearl", "mint", "graphite", "ocean")
             val recommended = recommendedIds.mapNotNull { PalettePresets.byId(it) }
             val otherPresets = PalettePresets.all.filterNot { p -> recommendedIds.contains(p.id) }
@@ -712,12 +740,12 @@ private fun SettingsContent(
                 value = seedText,
                 onValueChange = { input -> seedText = input.filterIndexed { i, c -> c.isDigit() || (i == 0 && c == '-') } },
                 label = { Text("Sampling seed (-1 = random)") },
-                supportingText = { Text("Use -1 for a fresh random seed per run, or a non-negative number to make runs repeatable. Sampling changes apply after reloading the model.") },
+                supportingText = { Text("Use -1 for a fresh random seed per run, or a non-negative number to make runs repeatable. Sampling values are applied to the next request without reloading the model.") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 modifier = Modifier.fillMaxWidth()
             )
-            Hint("Sampling is fixed when the model is opened. Temperature 0 = greedy decoding (always the most likely token). This engine does not expose a repetition-penalty setting.")
+            Hint("Temperature, Top-P, Top-K and seed are applied per request and do not require a model reload. Temperature 0 = greedy decoding (always the most likely token). This engine does not expose a repetition-penalty setting.")
             Divider()
             } // compute group
 
@@ -782,10 +810,11 @@ private fun SettingsContent(
                 settings.toolsUtilitiesEnabled
             ) { viewModel.updateToolsUtilitiesEnabled(it) }
             SwitchRow(
-                "Interactive UI generation",
-                "When on, ask the model to build interactive HTML mini-apps, charts, and controls when useful. Off by default to avoid extra generated code and keep normal replies lean. HTML previews use the existing artifact viewer.",
+                "Native UI components",
+                "When you explicitly ask for an in-chat visual, the model may return a compact bmoe-ui JSON block. The app renders it as native Compose cards, metrics, bars, selectable cards and action buttons — no generated HTML/JavaScript. Off by default to keep ordinary answers lean.",
                 settings.interactiveUiEnabled
             ) { viewModel.updateInteractiveUiEnabled(it) }
+            Hint("Interactive Artifacts remain separate: use the existing artifact preview when you explicitly want a standalone HTML/SVG/Mermaid file. Native UI blocks are limited to safe built-in components.")
             ChoiceSetting(
                 "Longest tool result",
                 listOf(
@@ -985,11 +1014,15 @@ private fun SettingsFoldout(
     expanded: Boolean,
     onToggle: () -> Unit
 ) {
+    val shape = RoundedCornerShape(16.dp)
+    val styled = AppTheme.visualStyle != AppVisualStyle.SOLID
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        modifier = Modifier.fillMaxWidth()
+            .then(if (styled) appSurfaceModifier(shape, MaterialTheme.colorScheme.surfaceContainerLow) else Modifier)
+            .clickable(onClick = onToggle),
+        shape = shape,
+        color = if (styled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
+        border = if (styled) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),

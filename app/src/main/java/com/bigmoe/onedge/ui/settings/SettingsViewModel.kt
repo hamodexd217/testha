@@ -10,6 +10,7 @@ import com.bigmoe.onedge.core.EngineState
 import com.bigmoe.onedge.core.ModelManager
 import com.bigmoe.onedge.data.local.datastore.EngineSettings
 import com.bigmoe.onedge.data.local.datastore.EngineSettingsDataStore
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
 import com.bigmoe.onedge.data.local.datastore.WebSearchMode
 import com.bigmoe.onedge.ui.theme.PalettePresets
 import com.bigmoe.onedge.ui.theme.PaletteSpec
@@ -115,6 +116,7 @@ class SettingsViewModel(
 
     // ---- appearance ----
     fun selectTheme(id: String) = launch { dataStore.updateThemeId(id) }
+    fun updateVisualStyle(style: AppVisualStyle) = launch { dataStore.updateVisualStyle(style) }
 
     /** Saves (insert or replace) a custom palette and selects it. */
     fun saveCustomPalette(palette: PaletteSpec) = launch {

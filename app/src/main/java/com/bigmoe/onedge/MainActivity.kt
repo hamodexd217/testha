@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -64,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            BigMoeTheme(themeId = settings.themeId, customPalettesJson = settings.customPalettesJson) {
+            BigMoeTheme(themeId = settings.themeId, customPalettesJson = settings.customPalettesJson, visualStyle = settings.visualStyle) {
                 val chatViewModel: ChatViewModel = viewModel(factory = viewModelFactory)
                 val historyViewModel: HistoryViewModel = viewModel(factory = viewModelFactory)
                 val settingsViewModel: SettingsViewModel = viewModel(factory = viewModelFactory)

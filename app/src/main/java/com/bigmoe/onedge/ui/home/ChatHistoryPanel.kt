@@ -63,11 +63,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bigmoe.onedge.data.repository.ChatSessionDomainModel
 import com.bigmoe.onedge.ui.history.HistoryViewModel
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
+import com.bigmoe.onedge.ui.theme.AppTheme
+import com.bigmoe.onedge.ui.theme.appSurfaceModifier
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -166,10 +170,14 @@ fun ChatHistoryPanel(
         }
     }
 
+    val styledPanel = AppTheme.visualStyle != AppVisualStyle.SOLID
+    val panelShape = RoundedCornerShape(topEnd = 20.dp, bottomEnd = 20.dp)
     Surface(
-        modifier = modifier.width(344.dp).fillMaxHeight(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp
+        modifier = modifier.width(344.dp).fillMaxHeight()
+            .then(if (styledPanel) appSurfaceModifier(panelShape, MaterialTheme.colorScheme.surface) else Modifier),
+        shape = panelShape,
+        color = if (styledPanel) Color.Transparent else MaterialTheme.colorScheme.surface,
+        tonalElevation = if (styledPanel) 0.dp else 2.dp
     ) {
         // Keep the heading comfortably inset on compact split-screen layouts as well as full-width phones.
         Column(Modifier.fillMaxHeight().padding(horizontal = 22.dp, vertical = 14.dp)) {

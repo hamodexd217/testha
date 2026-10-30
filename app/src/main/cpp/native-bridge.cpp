@@ -529,6 +529,7 @@ Java_com_bigmoe_onedge_core_EngineNativeBridge_nativeGenerate(
     jbyteArray j_system, jobjectArray j_history_flat, jbyteArray j_prompt,
     jint max_tokens, jboolean clear_kv, jboolean think,
     jintArray j_image_dims, jobjectArray j_image_data,
+    jboolean override_sampling, jfloat temperature, jfloat top_p, jint top_k, jint seed,
     jobject callback)
 {
     if (callback == nullptr) return JNI_FALSE;
@@ -572,6 +573,13 @@ Java_com_bigmoe_onedge_core_EngineNativeBridge_nativeGenerate(
     req.think = (think == JNI_TRUE);
     req.clear_kv = (clear_kv == JNI_TRUE);
     req.render_text = true; // engine-side, template-aware split of answer vs reasoning
+    req.sampling_override = (override_sampling == JNI_TRUE);
+    if (req.sampling_override) {
+        req.sampling.temp = static_cast<float>(temperature);
+        req.sampling.top_p = static_cast<float>(top_p);
+        req.sampling.top_k = static_cast<int>(top_k);
+        req.sampling.seed = static_cast<uint32_t>(seed); // -1 = random per generation
+    }
     if (req.clear_kv) {
         req.system_prompt = from_bytes(env, j_system);
         if (j_history_flat != nullptr) {

@@ -42,6 +42,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,11 +54,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 import com.bigmoe.onedge.core.EngineState
 import com.bigmoe.onedge.core.ModelFile
 import com.bigmoe.onedge.core.ModelManager
 import com.bigmoe.onedge.core.SpecSource
+import com.bigmoe.onedge.data.local.datastore.AppVisualStyle
 import com.bigmoe.onedge.data.local.datastore.EngineSettings
+import com.bigmoe.onedge.ui.theme.AppTheme
 import com.bigmoe.onedge.data.local.datastore.loadConfigDiffers
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -149,12 +153,16 @@ fun ModelScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.surface else Color.Transparent
+                ),
                 title = {
                     Text("MODELS", style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold)
                 }
             )
         },
-        modifier = modifier
+        modifier = modifier,
+        containerColor = if (AppTheme.visualStyle == AppVisualStyle.SOLID) MaterialTheme.colorScheme.background else Color.Transparent
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
