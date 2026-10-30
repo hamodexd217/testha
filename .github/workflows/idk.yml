@@ -1,5 +1,5 @@
 
-name: Wipe Repository Except Workflows
+name: Complete Repository Cleanup
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  wipe:
+  cleanup:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,21 +17,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Delete everything except workflows
+      - name: Remove everything except workflows
         run: |
+          # Remove everything in repository root except .git and .github
           find . -mindepth 1 -maxdepth 1 \
             ! -name '.git' \
             ! -name '.github' \
-            -exec rm -rf {} +
+            -exec rm -rf -- {} +
 
+          # Remove everything inside .github except workflows
           find .github -mindepth 1 -maxdepth 1 \
             ! -name 'workflows' \
-            -exec rm -rf {} +
+            -exec rm -rf -- {} +
 
-          find .github/workflows -mindepth 1 \
-            -exec rm -rf {} +
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -A
-          git commit -m "Wipe repository except workflows" || true
-          git push origin HEAD
+          git commit -m "Complete repository cleanup" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
           
