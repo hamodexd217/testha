@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AlertDialog
@@ -238,6 +240,17 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    // A dedicated, discoverable control for tablet split view. Hiding the history
+                    // pane gives the conversation the whole available width; the same control
+                    // restores the split view afterwards.
+                    if (wideMode) {
+                        IconButton(onClick = onToggleHistoryPane) {
+                            Icon(
+                                imageVector = if (historyPaneVisible) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
+                                contentDescription = if (historyPaneVisible) "Expand chat to full screen" else "Restore split view"
+                            )
+                        }
+                    }
                     // Always-visible escape hatch back to the main Chats/Home page.
                     // This is especially useful on tablets where the chat is a permanent split pane.
                     IconButton(onClick = onNavigateHome) {

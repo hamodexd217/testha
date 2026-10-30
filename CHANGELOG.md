@@ -1,5 +1,13 @@
 # BigMoeOnEdge+ Changelog
 
+## 0.6.1 — 2026-10-30 (source update)
+
+- Added a dedicated expand/restore control to the wide-screen chat toolbar. It hides the history pane so the conversation can use the full tablet width, then restores the split view.
+- Completed the source-side settings and chat UI work documented in the README: Custom Settings, Solid/Gradient/Liquid Glass surface styles, centered max-width composer, and removal of the old live-statistics strip.
+- Kept Native UI Components data-only and opt-in; the renderer uses predefined Compose components rather than executing generated HTML or JavaScript.
+- Bumped the Android version to 0.6.1 (`versionCode` 12) so a rebuilt APK is distinguishable from the older 0.6.0 APK.
+- This is a source update. A successful Android Gradle build and device verification are not claimed by this change log entry.
+
 ## Unreleased — upstream 0.35.0 migration tranche
 
 - Fixed Settings → Appearance to start collapsed, consistent with the other settings groups.

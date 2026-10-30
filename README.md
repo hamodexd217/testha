@@ -18,7 +18,7 @@
 
 BigMoeOnEdge+ runs local `.gguf` models on Android. It supports dense and Mixture-of-Experts models, persistent conversations, streaming generation, reasoning display, model management, attachments, web search, tools, vision through compatible `mmproj` files, generated files, and an optional local API server.
 
-The Android app version in this source tree is **0.6.0** (`versionCode` 11). The native engine is based on the project's customized BigMoeOnEdge 0.28.1-compatible source. This repository snapshot has not been compiled into an APK in the current editing environment; check the build status below before distributing it.
+The Android app version in this source tree is **0.6.1** (`versionCode` 12). The native engine is based on the project's customized BigMoeOnEdge 0.28.1-compatible source. This is a source snapshot; it is not an APK, and an APK built from an older checkout will not contain these changes.
 
 ## Current features
 
@@ -29,7 +29,7 @@ The Android app version in this source tree is **0.6.0** (`versionCode` 11). The
 - Streaming text and reasoning, message editing/copying, source links, and per-message generation statistics.
 - Queue messages while a model is loading. Queued messages are sent in order once the model is ready.
 - A centered chat composer with a maximum width, designed for tablet layouts.
-- On wide screens, tap the draggable/clickable pane handle to hide chat history and use the full conversation width.
+- On wide screens, use the dedicated expand/restore button in the chat toolbar, or the pane handle, to hide chat history and use the full conversation width.
 
 ### Settings and appearance
 
@@ -57,7 +57,15 @@ The app can expose its loaded model over a local HTTP API for compatible tools o
 
 ## Download
 
-Use the [latest published APK](https://github.com/hamodexd217/BigMoeOnEdge-plus/releases/latest). The APK available there may not include changes from this source snapshot unless a release has been built and published after those changes.
+Use the [latest published APK](https://github.com/hamodexd217/BigMoeOnEdge-plus/releases/latest). The APK available there may not include changes from this source snapshot unless a release has been built and published after those changes. The source version is bumped to 0.6.1 / versionCode 12 so a freshly built APK can be distinguished from the earlier 0.6.0 / versionCode 11 build.
+
+### Where to find the updated UI
+
+- **Settings → Auto settings:** choose Fastest, Balanced, Most accurate, or open **Custom settings** to edit the engine profile directly.
+- **Settings → Appearance:** the **Surface style** selector appears above the palette list. Choose Solid colors, Gradient, or Liquid glass.
+- **Chat on a wide screen:** the expand icon in the top toolbar hides the history pane; its restore icon brings the split view back. The old live-statistics strip is not part of the chat layout.
+- **Settings → Tools:** Native UI Components is optional and off by default.
+- **Settings → Web search:** image search has its own enable switch, separate from the optional automatic image lookup after a web search. Automatic follow-up is off by default.
 
 ## Build from source
 
