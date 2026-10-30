@@ -124,6 +124,11 @@ class NativeEngineBackend(private val bridge: EngineNativeBridge) : EngineBacken
             think = think,
             imageDims = IntArray(images.size * 2) { i -> if (i % 2 == 0) images[i / 2].width else images[i / 2].height },
             imageData = Array(images.size) { images[it].rgb },
+            overrideSampling = false,
+            temperature = 0f,
+            topP = 1f,
+            topK = 0,
+            seed = -1,
             callback = callback
         )
     }
