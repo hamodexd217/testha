@@ -11,8 +11,9 @@ name: Build
 # Triggers: every push to main and every pull request; a v* tag also publishes the release;
 # "Run workflow" builds on demand. The NPU (Hexagon) APK keeps its own workflow, build-npu-fixed-3.yml.
 #
-# Layout: the project may sit unpacked at the repository root, or ship as one source .zip there
-# (.github/actions/locate-project). The desktop jobs need ./upstream, so they run only with the
+# This file is self-contained: it needs nothing else in .github/. Layout: the project may sit unpacked at
+# the repository root, or ship as one source .zip there
+# (the "Locate project" step of each job). The desktop jobs need ./upstream, so they run only with the
 # unpacked layout or a zip that contains it.
 #
 # Not tested before it was committed: this workflow was written without access to a runner. If a step
@@ -52,7 +53,42 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ./.github/actions/locate-project
+      # Finds the project: unpacked at the repository root, or shipped as exactly one source .zip there
+      # (any name). A zipped project is moved to ./project/root so its path has no spaces (the zip's own
+      # folder is called "BigMoeOnEdge plus 0.x.y"), which NDK/CMake builds do not always survive.
+      # Written without mapfile so it also runs on macOS's bash 3.2. Same convention as build-npu-fixed-3.yml.
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f gradlew ] && [ -d app ]; then
+            ROOT="."
+          else
+            ZIPS="$(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)"
+            COUNT="$(printf '%s\n' "$ZIPS" | grep -c . || true)"
+            if [ "$COUNT" -ne 1 ]; then
+              echo "ERROR: expected the project at the repository root or exactly one source ZIP there; found $COUNT:" >&2
+              printf '%s\n' "$ZIPS" >&2
+              exit 1
+            fi
+            echo "Source ZIP: $ZIPS"
+            PY="$(command -v python3 || command -v python)"
+            mkdir -p project/unzipped
+            "$PY" -m zipfile -e "$ZIPS" project/unzipped
+            # The app's root: the shallowest directory holding both gradlew and app/build.gradle.kts. (Not just
+            # the first gradlew: upstream/examples/android has one of its own.)
+            SRC=""
+            find project/unzipped -maxdepth 6 -type f -name gradlew | awk '{ print length($0) "\t" $0 }' | sort -n | cut -f2- > "$RUNNER_TEMP/gradlews.txt"
+            while IFS= read -r W; do
+              D="$(dirname "$W")"
+              if [ -f "$D/app/build.gradle.kts" ] || [ -f "$D/app/build.gradle" ]; then SRC="$D"; break; fi
+            done < "$RUNNER_TEMP/gradlews.txt"
+            test -n "$SRC" || { echo "ERROR: no gradlew with an app/ module in the source ZIP" >&2; exit 1; }
+            mv "$SRC" project/root
+            ROOT="project/root"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
       - name: App version, and that it matches the tag
         id: v
         shell: bash
@@ -76,7 +112,42 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ./.github/actions/locate-project
+      # Finds the project: unpacked at the repository root, or shipped as exactly one source .zip there
+      # (any name). A zipped project is moved to ./project/root so its path has no spaces (the zip's own
+      # folder is called "BigMoeOnEdge plus 0.x.y"), which NDK/CMake builds do not always survive.
+      # Written without mapfile so it also runs on macOS's bash 3.2. Same convention as build-npu-fixed-3.yml.
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f gradlew ] && [ -d app ]; then
+            ROOT="."
+          else
+            ZIPS="$(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)"
+            COUNT="$(printf '%s\n' "$ZIPS" | grep -c . || true)"
+            if [ "$COUNT" -ne 1 ]; then
+              echo "ERROR: expected the project at the repository root or exactly one source ZIP there; found $COUNT:" >&2
+              printf '%s\n' "$ZIPS" >&2
+              exit 1
+            fi
+            echo "Source ZIP: $ZIPS"
+            PY="$(command -v python3 || command -v python)"
+            mkdir -p project/unzipped
+            "$PY" -m zipfile -e "$ZIPS" project/unzipped
+            # The app's root: the shallowest directory holding both gradlew and app/build.gradle.kts. (Not just
+            # the first gradlew: upstream/examples/android has one of its own.)
+            SRC=""
+            find project/unzipped -maxdepth 6 -type f -name gradlew | awk '{ print length($0) "\t" $0 }' | sort -n | cut -f2- > "$RUNNER_TEMP/gradlews.txt"
+            while IFS= read -r W; do
+              D="$(dirname "$W")"
+              if [ -f "$D/app/build.gradle.kts" ] || [ -f "$D/app/build.gradle" ]; then SRC="$D"; break; fi
+            done < "$RUNNER_TEMP/gradlews.txt"
+            test -n "$SRC" || { echo "ERROR: no gradlew with an app/ module in the source ZIP" >&2; exit 1; }
+            mv "$SRC" project/root
+            ROOT="project/root"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
 
       - name: Reclaim runner disk space
         shell: bash
@@ -184,7 +255,42 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ./.github/actions/locate-project
+      # Finds the project: unpacked at the repository root, or shipped as exactly one source .zip there
+      # (any name). A zipped project is moved to ./project/root so its path has no spaces (the zip's own
+      # folder is called "BigMoeOnEdge plus 0.x.y"), which NDK/CMake builds do not always survive.
+      # Written without mapfile so it also runs on macOS's bash 3.2. Same convention as build-npu-fixed-3.yml.
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f gradlew ] && [ -d app ]; then
+            ROOT="."
+          else
+            ZIPS="$(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)"
+            COUNT="$(printf '%s\n' "$ZIPS" | grep -c . || true)"
+            if [ "$COUNT" -ne 1 ]; then
+              echo "ERROR: expected the project at the repository root or exactly one source ZIP there; found $COUNT:" >&2
+              printf '%s\n' "$ZIPS" >&2
+              exit 1
+            fi
+            echo "Source ZIP: $ZIPS"
+            PY="$(command -v python3 || command -v python)"
+            mkdir -p project/unzipped
+            "$PY" -m zipfile -e "$ZIPS" project/unzipped
+            # The app's root: the shallowest directory holding both gradlew and app/build.gradle.kts. (Not just
+            # the first gradlew: upstream/examples/android has one of its own.)
+            SRC=""
+            find project/unzipped -maxdepth 6 -type f -name gradlew | awk '{ print length($0) "\t" $0 }' | sort -n | cut -f2- > "$RUNNER_TEMP/gradlews.txt"
+            while IFS= read -r W; do
+              D="$(dirname "$W")"
+              if [ -f "$D/app/build.gradle.kts" ] || [ -f "$D/app/build.gradle" ]; then SRC="$D"; break; fi
+            done < "$RUNNER_TEMP/gradlews.txt"
+            test -n "$SRC" || { echo "ERROR: no gradlew with an app/ module in the source ZIP" >&2; exit 1; }
+            mv "$SRC" project/root
+            ROOT="project/root"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
       - name: Configure
         shell: bash
         run: cmake -S "$PROJECT_ROOT/ci/core-host" -B build-host -DCMAKE_BUILD_TYPE=Release
@@ -220,7 +326,42 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: ./.github/actions/locate-project
+      # Finds the project: unpacked at the repository root, or shipped as exactly one source .zip there
+      # (any name). A zipped project is moved to ./project/root so its path has no spaces (the zip's own
+      # folder is called "BigMoeOnEdge plus 0.x.y"), which NDK/CMake builds do not always survive.
+      # Written without mapfile so it also runs on macOS's bash 3.2. Same convention as build-npu-fixed-3.yml.
+      - name: Locate project
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f gradlew ] && [ -d app ]; then
+            ROOT="."
+          else
+            ZIPS="$(find . -maxdepth 1 -type f -name '*.zip' ! -name 'logs_*.zip' ! -name '*artifact*' | sort)"
+            COUNT="$(printf '%s\n' "$ZIPS" | grep -c . || true)"
+            if [ "$COUNT" -ne 1 ]; then
+              echo "ERROR: expected the project at the repository root or exactly one source ZIP there; found $COUNT:" >&2
+              printf '%s\n' "$ZIPS" >&2
+              exit 1
+            fi
+            echo "Source ZIP: $ZIPS"
+            PY="$(command -v python3 || command -v python)"
+            mkdir -p project/unzipped
+            "$PY" -m zipfile -e "$ZIPS" project/unzipped
+            # The app's root: the shallowest directory holding both gradlew and app/build.gradle.kts. (Not just
+            # the first gradlew: upstream/examples/android has one of its own.)
+            SRC=""
+            find project/unzipped -maxdepth 6 -type f -name gradlew | awk '{ print length($0) "\t" $0 }' | sort -n | cut -f2- > "$RUNNER_TEMP/gradlews.txt"
+            while IFS= read -r W; do
+              D="$(dirname "$W")"
+              if [ -f "$D/app/build.gradle.kts" ] || [ -f "$D/app/build.gradle" ]; then SRC="$D"; break; fi
+            done < "$RUNNER_TEMP/gradlews.txt"
+            test -n "$SRC" || { echo "ERROR: no gradlew with an app/ module in the source ZIP" >&2; exit 1; }
+            mv "$SRC" project/root
+            ROOT="project/root"
+          fi
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $ROOT"
 
       - name: Is upstream/ here?
         shell: bash
@@ -269,106 +410,4 @@ jobs:
           done
           echo "llama.cpp pin: $(git -C "$RUNNER_TEMP/up/third_party/llama.cpp" rev-parse HEAD)"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Build the web UI
-        shell: bash
-        run: cd "$PROJECT_ROOT/upstream/ui" && npm ci && npm run build
-
-      - name: Configure and build
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_ROOT/upstream"
-          cmake -S . -B build ${{ matrix.cmake_extra }} \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBMOE_BUILD_TESTS=OFF \
-            -DGGML_OPENMP=OFF \
-            -DLLAMA_CURL=OFF
-          cmake --build build --config Release -j 2 --target bmoe-cli bmoe-server bmoe-server-assets bmoe-desktop
-
-      - name: Smoke (--version)
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_ROOT/upstream"
-          WB=build/bin/Release; [ -d "$WB" ] || WB=build/bin
-          EXE=""; [ "${{ runner.os }}" != "Windows" ] || EXE=".exe"
-          "$WB/bmoe-cli$EXE" --version
-          "$WB/bmoe-server$EXE" --version
-
-      - name: Package
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_ROOT/upstream"
-          WB=build/bin/Release; [ -d "$WB" ] || WB=build/bin
-          NAME="bmoe-desktop-${{ needs.version.outputs.version }}-${{ matrix.target }}"
-          PY="$(command -v python3 || command -v python)"
-          mkdir -p "$RUNNER_TEMP/pkg/$NAME" "$GITHUB_WORKSPACE/dist"
-          D="$RUNNER_TEMP/pkg/$NAME"
-          # Everything the build put beside the executables: the engine's libraries and one module per
-          # ggml backend, which ggml finds next to the program at start-up.
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "$WB"/*.exe "$WB"/*.dll "$D/"
-            # The C++ runtime, so a machine without the redistributable still starts the programs.
-            VS="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products "*" -property installationPath)"
-            ARCH=x64; case "${{ matrix.target }}" in windows-arm64*) ARCH=arm64 ;; esac
-            CRT="$(ls -d "$(cygpath -u "$VS")"/VC/Redist/MSVC/*/$ARCH/Microsoft.VC*.CRT | sort | tail -1)"
-            cp "$CRT"/msvcp140*.dll "$CRT"/vcruntime140*.dll "$D/"
-            if [ "$ARCH" = arm64 ]; then rm -f "$D/vcruntime140_1.dll"; fi
-          else
-            for f in bmoe-cli bmoe-server bmoe-desktop; do [ ! -e "build/bin/$f" ] || cp "build/bin/$f" "$D/"; done
-            cp -P build/bin/*.so* "$D/" 2>/dev/null || true
-            cp -P build/bin/*.dylib "$D/" 2>/dev/null || true
-          fi
-          ls "$D" | grep -q 'ggml-cpu' || { echo "no CPU backend module in the package" >&2; ls "$D"; exit 1; }
-          cp LICENSE THIRD_PARTY_LICENSES "$D/" 2>/dev/null || true
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            (cd "$RUNNER_TEMP/pkg" && "$PY" -m zipfile -c "$GITHUB_WORKSPACE/dist/$NAME.zip" "$NAME")
-          else
-            tar -C "$RUNNER_TEMP/pkg" -czf "$GITHUB_WORKSPACE/dist/$NAME.tar.gz" "$NAME"
-          fi
-          ls -l "$GITHUB_WORKSPACE/dist"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-${{ matrix.target }}
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 14
-
-  # ------------------------------------------------------------------------------------------------
-  release:
-    if: startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.android.result == 'success'
-    needs: [version, android, core-host, desktop]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/locate-project
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Collect
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          find artifacts -type f \( -name '*.apk' -o -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} release/ \;
-          (cd release && sha256sum * > SHA256SUMS.txt)
-          ls -l release
-          V="${{ needs.version.outputs.version }}"
-          if [ -f "$PROJECT_ROOT/docs/RELEASE_NOTES_$V.md" ]; then cp "$PROJECT_ROOT/docs/RELEASE_NOTES_$V.md" notes.md; else echo "BigMoeOnEdge+ $V" > notes.md; fi
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: BigMoeOnEdge+ ${{ needs.version.outputs.version }}
-          body_path: notes.md
-          files: release/*
-          fail_on_unmatched_files: true
+      - 
